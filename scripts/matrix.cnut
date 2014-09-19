@@ -1,0 +1,181 @@
+/*
+Gabardine
+Copyright (c) Microsoft Corporation
+All rights reserved.
+Licensed under the Apache License, Version 2.0 (the License); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+THIS CODE IS PROVIDED ON AN  *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE, MERCHANTABLITY OR NON-INFRINGEMENT.
+See the Apache Version 2.0 License for specific language governing permissions and limitations under the License.
+*/
+require real.cnut
+
+  // Matrix type and constructors
+
+  operator Matrix 0 
+//    typeofElement(Matrix) -> Real
+//    isScalar(Matrix) -> false
+//    operator Matrix 3 typeof(Matrix(_, _, _)) -> Matrix
+
+
+  operator rows 1   //typeof(rows(_)) -> Integer
+  operator cols 1   //typeof(cols(_)) -> Integer
+  operator madd 2   //typeof(madd(_, _)) -> Matrix
+  operator mmul 2   //typeof(mmul(_, _)) -> Matrix
+  operator msub 2   //typeof(msub(_, _)) -> Matrix
+  operator trans 1  //typeof(trans(_)) -> Matrix
+  operator zeros 2  //typeof(zeros(_, _)) -> Matrix
+  operator ones 2   //typeof(ones(_, _)) -> Matrix
+  operator eye 1    //typeof(eye(_)) -> Matrix
+  operator scale 2  //typeof(scale(_, _)) -> Matrix
+  operator hada 2   //typeof(hada(_, _)) -> Matrix
+  operator kron 2   //typeof(kron(_, _)) -> Matrix
+  operator vec 1    //typeof(vec(_)) -> Matrix
+  operator dot 2    //typeof(dot(_, _)) -> Real
+  operator det 1    //typeof(det(_)) -> Real
+  operator inv 1    //typeof(inv(_)) -> Matrix
+  operator solve 2  //typeof(solve(_, _)) -> Matrix
+  operator trace 1  //typeof(trace(_)) -> Real
+  operator Komm 2   //typeof(Komm(_, _)) -> Matrix
+  operator concat 1 //typeof(concat(_)) -> Matrix
+
+∀u m,    mmul(u, zeros(_, m)) -> zeros(rows(u), m)
+∀n v,    mmul(zeros(n, _), v) -> zeros(n, cols(v))
+∀n m,    hada(zeros(n, m), _) -> zeros(n, m)
+∀n m,    hada(_, zeros(n, m)) -> zeros(n, m)
+
+∀v,      madd(zeros(_, _), v) -> v
+∀u,      madd(u, zeros(_, _)) -> u
+∀u,      msub(u, zeros(_, _)) -> u
+∀v,      msub(zeros(_, _), v) -> scale(-1.0, v)
+
+∀u,      mmul(eye(_), u) -> u
+∀u,      mmul(u, eye(_)) -> u
+∀v,      scale(1.0, v) -> v
+∀v,      scale(0.0, v) -> zeros(rows(v), cols(v))
+∀n m,    scale(_, zeros(n, m)) -> zeros(n, m)
+∀n m u,  scale(n, scale(m, u)) -> scale(n*m, u)
+∀A a,    mmul(scale(a, eye(_)), A) -> scale(a, A)
+∀A a,    mmul(A, scale(a, eye(_))) -> scale(a, A)
+
+∀n m,    dot(zeros(n, m), _) -> 0.0
+∀n m,    dot(_, zeros(n, m)) -> 0.0
+
+∀u,      madd(u, u) -> scale(2.0, u)
+∀u n,    madd(u, scale(n, u)) -> scale(1.0 + n, u)
+∀u n,    madd(scale(n,u), u) -> scale(1.0 + n, u)
+∀u n m,  madd(scale(n,u), scale(m,u)) -> scale(n+m, u)
+
+∀u,      trans(trans(u)) -> u
+∀n m,    trans(zeros(n,m)) -> zeros(m,n)
+∀n,      trans(eye(n)) -> eye(n)
+∀u v,    trans(mmul(u, v)) -> mmul(trans(v), trans(u))
+
+∀n m,    vec(zeros(n,m)) -> zeros(n*m, 1)
+
+          trace(zeros(_,_)) -> 0.0
+∀n,      trace(eye(n)) -> cast_to(n, Real)
+∀n,      trace(ones(n,n)) -> cast_to(n, Real)
+
+          ones(1,1) -> eye(1)
+    
+// Inversion
+∀A,      inv(inv(A)) -> A
+∀A,      mmul(A, inv(A)) -> eye(rows(A))
+∀A,      mmul(inv(A),A) -> eye(rows(A))
+        //mmul(inv(A), B) -> solve(A,B)    
+
+
+// Kronecker product, vec, and commutation
+∀x,      kron(eye(1), x) -> x
+∀x,      kron(x, eye(1)) -> x
+
+∀x n m,  kron(x, zeros(n, m)) -> zeros(n*rows(x), m*cols(x))
+∀x n m,  kron(zeros(n, m), x) -> zeros(n*rows(x), m*cols(x))
+
+∀n,      Komm(1, n) -> eye(n)
+∀n,      Komm(n, 1) -> eye(n)
+∀A,      mmul(Komm(_,_), vec(A)) -> vec(trans(A))
+∀n m,    inv(Komm(n,m)) -> trans(Komm(n,m))
+
+∀A B,    mmul(kron(A, B), Komm(_,_)) -> mmul(Komm(rows(A), rows(B)), kron(B, A))    
+
+∀A B,    mmul(trans(vec(B)), kron(eye(_), A)) -> trans(vec(mmul(trans(A),B)))    
+∀A B,    mmul(trans(vec(eye(_))), kron(B, A)) -> trans(vec(mmul(trans(A), B)))
+
+////////////////////////////////////////////////////////////////////
+// HACK: Pretty sure we shouldn't always expand krons like this...
+∀a b u v,
+    mmul(kron(a, b), madd(u, v)) ->
+      let K = kron(a, b) in
+      madd(mmul(K, u), mmul(K, v))
+∀n u v,
+    mmul(trans(vec(eye(n))), madd(u,v)) -> 
+      let T = trans(vec(eye(n)))
+      madd(mmul(T, u), mmul(T, v))
+///////////////////////////////////////////////////////////////////
+
+// Matrix sizes
+
+operator inherit_fail_rows 1
+operator inherit_fail_cols 1
+
+∀u,    rows(u) -> rows(inherit(u))
+∀u,    rows(inherit(u)) -> failwith(cons("Unable to determine rows of ", u))
+∀u,    cols(u) -> cols(inherit(u))
+∀u,    cols(inherit(u)) -> failwith(cons("Unable to determine columns of ", u))
+
+//∀x,    size(x, Matrix) -> rows(x) * cols(x)
+
+∀n,    rows(zeros(n,_)) -> n
+∀m,    cols(zeros(_,m)) -> m
+∀n,    rows(ones(n,_)) -> n
+∀m,    cols(ones(_,m)) -> m
+∀n,    rows(eye(n)) -> n
+∀m,    cols(eye(m)) -> m
+
+∀v,    rows(scale(_,v)) -> rows(v)
+∀v,    cols(scale(_,v)) -> cols(v)
+
+∀u,    rows(mmul(u,_)) -> rows(u)
+∀v,    cols(mmul(_,v)) -> cols(v)
+∀u v,  rows(kron(u,v)) -> rows(u)*rows(v)
+∀u v,  cols(kron(u,v)) -> cols(u)*cols(v)
+∀u,    rows(hada(u,_)) -> rows(u)
+∀u,    cols(hada(u,_)) -> cols(u)
+
+∀u,    rows(madd(u,_)) -> rows(u)
+∀u,    cols(madd(u,_)) -> cols(u)
+∀u,    rows(msub(u,_)) -> rows(u)
+∀u,    cols(msub(u,_)) -> cols(u)
+
+∀u,    rows(trans(u)) -> cols(u)
+∀u,    cols(trans(u)) -> rows(u)
+
+∀u,    rows(inv(u)) -> rows(u)
+∀u,    cols(inv(u)) -> cols(u)
+
+∀B,    rows(solve(_,B)) -> rows(B)
+∀B,    cols(solve(_,B)) -> cols(B)
+
+//∀r,    rows(Matrix(_,r,_)) -> r
+//∀c,    cols(Matrix(_,_,c)) -> c
+
+∀m n,  rows(Komm(m,n)) -> m*n
+∀m n,  cols(Komm(m,n)) -> m*n
+
+∀x,    rows(vec(x)) -> size(x)
+∀x,    cols(vec(x)) -> 1
+
+∀h,    rows(concat(cons(h,_))) -> rows(h)
+∀h t,  cols(concat(cons(h,t))) -> cols(h) + cols(concat(t))
+        cols(concat(nil)) -> 0
+
+
+/*
+operator list_to_vector 1
+  typeof(list_to_vector(_)) -> Matrix
+  rows(list_to_vector(u)) -> list_length(u)
+  cols(list_to_vector(_)) -> 1
+  size(list_to_vector(u)) -> list_length(u)
+
+index(list_to_vector(u), i) -> nth(u, nat(i))
+*/

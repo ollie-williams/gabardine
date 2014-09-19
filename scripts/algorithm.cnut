@@ -1,0 +1,114 @@
+/*
+Gabardine
+Copyright (c) Microsoft Corporation
+All rights reserved.
+Licensed under the Apache License, Version 2.0 (the License); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+THIS CODE IS PROVIDED ON AN  *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE, MERCHANTABLITY OR NON-INFRINGEMENT.
+See the Apache Version 2.0 License for specific language governing permissions and limitations under the License.
+*/
+#include diff.cnut
+
+#syntax infix
+
+//------------------------------------------------------//
+// Loops                                                //
+//------------------------------------------------------//
+
+operator loop 4
+  inherit(loop(_, x, _, _)) -> x
+    
+operator loop 5
+  inherit(loop(_, x, _, _, _)) -> x
+  typeof(loop(_, _, _, _, T)) -> T
+key codegen {
+  loop(x0, x, cond, update) -> loop(x0, x, cond, update, typeof(x))
+}
+
+foreign void loop_dump(double* state, uint64 n)
+foreign void mark(uint64 n)
+
+codegen k <- loop(x0, x, cond, update, T) {
+  let state = k
+  let tmp = generate(alloc(x, T))
+  state <- generate(x0)
+  goto test
+
+  :test {
+    //call loop_dump(state, generate(size(x)))
+    bind x = state {
+      let C = generate(cond)
+      if C
+      then goto body
+      else goto end
+    }
+  }
+
+  :body {
+    bind x = state {
+      tmp <- generate(update)
+      state <- tmp
+    }
+    goto test
+  }
+
+  :end {
+    tmp <- generate(free(x, T))
+  }
+}
+
+codegen k <- loop(x0, x, cond, update, Real) {
+  
+  stack state = generate(x0)
+  goto test
+
+  :test {
+    bind x = load state {
+      if generate(cond)
+      then goto body
+      else goto end
+    }
+  }
+
+  :body {
+    bind x = load state {
+      state <- generate(update)
+    }
+    goto test
+  }
+
+  :end {
+    k <- load state
+  }
+}
+
+
+//------------------------------------------------------//
+// Gradient descent                                     //
+//------------------------------------------------------//
+
+operator gd 3
+operator gd 4
+  gd(x0, x, obj) -> gd(x0, x, obj, typeof(x))
+  
+  gd(x0, x, obj, Matrix) ->
+    let grad = diff(obj, x)
+    loop(x0, x, 1e-12 < dot(grad,grad), madd(x, scale(-1e-2, grad)))
+
+  gd(x0, x, obj, Pack) ->
+    let grad = diff(obj, x)
+    loop(x0, x, 1e-12 < dot(grad,grad), madd(x, scale(-1e-4, grad)))
+
+  gd(x0, x, obj, Real) ->
+    let grad = diff(obj, x)
+    loop(x0, x, 1e-12 < grad^2., x + -1e-2*grad)
+
+// Newton's method
+operator newton 4
+  newton(x0, x, obj, gamma) ->
+    let n = size(x)
+    let g = diff(obj, x) 
+    let H = Matrix(diff(g, x), n, n)
+    let update = scale(gamma, mmul(inv(H), Matrix(g, n, 1)))
+    loop(x0, x, 1e-12 < dot(g,g), msub(x, update))
+
+

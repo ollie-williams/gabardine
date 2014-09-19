@@ -1,0 +1,255 @@
+require boolean.cnut
+require real.cnut
+require matrix.cnut
+require summation.cnut
+
+//------------------------------------//
+// General-purpose differentials      //
+//------------------------------------//
+
+operator Diff 2
+operator Diff_check 3
+operator Diff_zero 2
+operator Diff_self 2
+operator wiggle 2
+
+  
+//
+// Fundamental rules
+  Diff(u, x) -> Diff_check(u, x, isParam(u) | isConst(u))
+  Diff(u[i], x) -> Diff_check(u[i], x, isParam(u) | isConst(u))
+    Diff_check(u, x, false) -> failwith(cons("can't differentiate ", cons(u, cons(" w.r.t. ", x))))
+    Diff_check(u, x, true) -> Diff_zero(u, typeof(u))
+    Diff_zero(_, Real) -> 0.0
+    Diff_zero(u, Matrix) -> zeros(rows(u), cols(u))
+
+  Diff(u, u) -> Diff_self(u, typeof(u))
+    Diff_self(u, Real) -> 1.0
+    Diff_self(u, Matrix) -> wiggle(u,eye(size(u)))
+
+
+//
+// Differentiating dereferenced items
+//  Diff(offset(u, _, _), x) -> Diff(u, x)
+//  Diff(index(offset(u, _, _),i), t) -> Diff(u[i], t)
+
+
+//
+// Real operators
+  operator Diff_pow 4
+  Diff(u + v, x) -> Diff(u,x) + Diff(v,x)
+  Diff(u - v, x) -> Diff(u,x) - Diff(v,x)
+  Diff(u * v, x) -> u * Diff(v,x) + Diff(u,x) * v
+  Diff(u/v, x) -> Diff(u,x)/v - Diff(v,x)*u/(v*v)
+  Diff(u ^ v, x) -> Diff_pow(u, v, x, typeof(v))
+    Diff_pow(u, v, x, Real) -> (u^v) * (Diff(u, x) * v / u + Diff(v, x) * log(u))
+    Diff_pow(u, v, x, Integer) -> 
+      let v_real = cast_to(v, Real)
+      v_real * Diff(u, x) * u ^ (v-1)
+  Diff(sqrt(u), x) -> 0.5 * Diff(u,x) / sqrt(u)
+  Diff(exp(u), x) -> exp(u) * Diff(u,x)
+  Diff(log(u), x) -> Diff(u, x) / u
+  Diff(sum(n, m, i => u), t) -> sum(n, m, i => Diff(u,t))
+  Diff(sin(u), x) -> cos(u) * Diff(u,x)
+  Diff(cos(u), x) -> -1.0 * sin(u) * Diff(u,x)
+
+//
+// Matrix operators
+  Diff(zeros(n,m), _) -> zeros(n,m)
+  Diff(ones(n,m), _) -> zeros(n,m)
+  Diff(eye(n), _) -> zeros(n,n)
+
+  Diff(madd(u, v), x) -> madd(Diff(u,x), Diff(v,x))
+  Diff(msub(u, v), x) -> msub(Diff(u,x), Diff(v,x))
+
+  Diff(scale(alpha, u), x) -> madd( scale(alpha, Diff(u,x)), scale(Diff(alpha, x), u) )
+  Diff(mmul(u, v), x)      -> madd( mmul(u, Diff(v,x)), mmul(Diff(u,x), v) )
+  Diff(dot(u,v), x)        -> dot(u, Diff(v,x)) + dot(Diff(u,x), v)
+  Diff(kron(u,v), x)       -> madd( kron(u, Diff(v,x)), kron(Diff(u, x), v) )
+
+  Diff(trans(u), x) -> trans(Diff(u,x))
+  Diff(vec(u), x) -> vec(Diff(u,x))
+
+  Diff(inv(u), x) -> 
+    let r = inv(u)
+    scale(-1.0, mmul(r, mmul(Diff(u,x), r)))
+  Diff(det(u), x) -> det(u) * trace(mmul(inv(u), Diff(u,x)))
+  Diff(trace(u), x) -> trace(Diff(u,x))
+
+
+
+//---------------------------------------------------------//
+// Propagating matrix derivatives back up expression tree  //
+//---------------------------------------------------------//
+wiggle(A, a) + wiggle(B, b) -> wiggle(A+B, madd(a,b))
+alpha * wiggle(A, a) -> wiggle(alpha * A, scale(alpha, a))
+wiggle(A, a) * alpha -> wiggle(A * alpha, scale(alpha, a))
+
+wiggle(A, a) / B -> wiggle(A/B, scale(1.0/B, a))
+A / wiggle(B, b) -> wiggle(A/B, scale(A/B^2, b))
+
+madd(wiggle(A,a), wiggle(B,b)) -> wiggle(madd(A,B), madd(a,b))
+msub(wiggle(A,a), wiggle(B,b)) -> wiggle(msub(A,B), msub(a,b))
+
+mmul(A, wiggle(B, b)) -> wiggle(mmul(A,B), mmul(kron(eye(rows(b)/cols(A)), A), b))
+mmul(wiggle(A, a), B) -> wiggle(mmul(A,B), mmul(kron(trans(B), eye(rows(a)/rows(B))), a))
+
+kron(A, wiggle(X,x)) ->
+  let p = rows(A)
+  let q = cols(A)
+  let m = rows(X)
+  let n = cols(X)
+  wiggle(kron(A,X),
+    mmul(
+      kron(eye(q), kron(Komm(n,p), eye(m))),
+      kron(vec(A), eye(m*n))
+      )
+  )
+
+kron(wiggle(X,x), A) -> 
+  let m = rows(X)
+  let n = cols(X)
+  let p = rows(A)
+  let q = cols(A)
+  wiggle(kron(X, A),
+    mmul(
+      kron(eye(n), kron(Komm(q,m), eye(p))),
+      kron(eye(m*n), vec(A))
+      )
+  )
+
+scale(alpha, wiggle(A, a)) -> wiggle(scale(alpha, A), scale(alpha, a))
+scale(wiggle(A, a), B) -> 
+  wiggle(
+    scale(A, B),
+    mmul(vec(B), a)
+    )
+
+dot(wiggle(A,a), B) -> wiggle(dot(A,B), mmul(trans(B), a))
+dot(A, wiggle(B,b)) -> wiggle(dot(A,B), mmul(trans(A), b))
+
+trans(wiggle(A,a)) -> wiggle(trans(A), mmul(Komm(rows(A), cols(A)), a))
+trace(wiggle(A,a)) -> wiggle(trace(A), mmul( trans(vec(eye(rows(A)))), a ))
+
+vec(wiggle(A,a)) -> wiggle(vec(A), a)
+
+sum(a, b, i => wiggle(F,f)) -> wiggle(sum(a, b, i => F), sum(a, b, i => f))
+
+
+operator extract 1
+operator extract 2
+//extract(u) -> u
+extract(u) -> extract(u, typeof(u))
+  extract(u, Real) -> u
+extract(wiggle(_,d)) -> d
+
+/*
+
+
+
+  //
+  // bp ("back-prop")
+  // Derivative of scalar with respect to a container (e.g., matrix or tuple).
+  //
+  operator bp 2
+  operator bp 3
+    bp(u,v) -> bp(u,v,typeof(v))
+    bp(_, _, T) -> failwith("Unrecognized type")
+
+  //size(bp(_,v,T)) -> size(v,T)
+
+  //
+  // bp with arrays
+  //
+  operator bp_a 2     
+  operator bp_a 3
+    bp(u, theta, Array(_)) -> bp_a(u, theta)
+    bp_a(u, thetas)    -> bp_a(u, thetas, length(thetas))
+    bp_a(u, thetas, n) -> build_array(n, q => bp(u, index(thetas, q)))
+
+  //
+  // bp with lists
+  //
+    bp(u, nil) -> nil
+    bp(u, cons(head,tail)) -> cons(bp(u, head), bp(u, tail))
+
+  //
+  // bp with reals
+  //
+    bp(u, v, Real) -> Diff(u,v)
+
+  //
+  // bp_m: 
+  // the diffient of a scalar expression with respect to a matrix 
+  //
+  operator bp_m 3
+    bp(u,v,Matrix) -> bp_m(u,v,1.0)
+
+  operator bp_check 2
+
+    bp_m(u, theta, down) -> bp_check( isParam(u) | isConst(u), theta )
+    bp_m(u[i], theta, down) -> bp_check(isParam(u) | isConst(u), theta )    
+    bp_check(true, theta) -> zeros(rows(theta), cols(theta))
+
+    bp_m(theta[i], theta[j], down) -> scale(delta(i,j), down)
+    bp_m(offset(u, _, _), theta, down) -> bp_m(u, theta, down)
+    bp_m(index(offset(u, _, _),i), theta, down) -> bp_m(u[i], theta, down)
+    bp_m(theta, theta, down) -> down
+
+    rows(bp_m(u, theta, down)) -> rows(theta)
+    cols(bp_m(u, theta, down)) -> cols(theta)
+
+    bp_m(sum(n, m, lambda(i, u)), theta, down) -> sum(n, m, lambda(i, bp_m(u, theta, down)))
+    
+    bp_m(u * v, theta, down) -> madd( bp_m(u, theta, down*v), bp_m(v, theta, down*u) )
+    operator bp_pow 4
+    bp_m(u ^ v, theta, down) -> bp_pow(u^v, theta, down, typeof(v))
+    bp_pow(u^v, theta, down, Integer) -> bp_m(u, theta, down * v * u^(v-1))
+
+    bp_m(det(u), theta, down) -> bp_m(u, theta, scale(down*det(u), trans(inv(u))))
+    bp_m(trace(u), theta, down) -> bp_m(u, theta, eye(rows(u)))
+
+    bp_m(exp(u), theta, down) -> bp_m(u, theta, exp(u)*down)
+    bp_m(log(u), theta, down) -> bp_m(u, theta, down/u)
+
+    bp_m(dot(u,v), theta, down) -> madd(bp_m(u, theta, scale(down,v)), bp_m(v, theta, scale(down,u)))
+    bp_m(mmul(u,v), theta, down) -> 
+      madd(bp_m(u,theta,mmul(down,trans(v))),
+           bp_m(v,theta,mmul(trans(u),down)))
+
+    bp_m(madd(u,v),theta,down) -> madd(bp_m(u,theta,down), bp_m(v,theta,down))
+    bp_m(msub(u,v),theta,down) -> msub(bp_m(u,theta,down), bp_m(v,theta,down))
+*/
+
+  
+operator diff 2
+operator diff 4
+
+operator diff_l 2
+  diff_l(f, cons(h,t)) -> cons(diff(f, h), diff_l(f, t))
+  diff_l(_, nil) -> nil
+  diff_l(cons(h,t), x) -> cons(diff(h, x), diff_l(t, x))
+  diff_l(nil, _) -> nil
+  
+  diff(f, x) -> diff(f, x, typeof(f), typeof(x))
+
+  diff(f, x, Real, Real) -> Diff(f, x)
+  
+  diff(f, x, Matrix, Real) -> Diff(f, x)
+  diff(f, x, Real, Matrix) -> extract(Diff(f, x))
+  diff(f, x, Matrix, Matrix) -> extract(Diff(f, x))
+
+  diff(f, x, Real, Pair(_,_)) -> pair(diff(f, first(x)), diff(f, second(x)))
+
+ /* diff(f, x, Pack, Real) ->
+    let pm = pack_members(f)
+    build_pack(diff_l(pm, x))  
+
+  diff(f, x, Pack, Matrix) ->
+    let pm = pack_members(f)
+    let d = diff_l(pm, x)
+    trans(concat(map(d, a => trans(a))))
+
+  diff(f, x, _, Pack) -> 
+    let pm = pack_members(x)
+    build_pack(diff_l(f, pm)) */

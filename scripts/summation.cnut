@@ -1,0 +1,88 @@
+/*
+Gabardine
+Copyright (c) Microsoft Corporation
+All rights reserved.
+Licensed under the Apache License, Version 2.0 (the License); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+THIS CODE IS PROVIDED ON AN  *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE, MERCHANTABLITY OR NON-INFRINGEMENT.
+See the Apache Version 2.0 License for specific language governing permissions and limitations under the License.
+*/
+require type.cnut
+
+operator sum 3
+    //typeof(sum(_,_, lambda(i, f))) -> typeof(f)
+    inherit(sum(_,_, lambda(_,f))) -> f
+
+operator sum 2
+sum(n, f) -> sum(0, n, f)
+
+require matrix.cnut
+require real.cnut
+
+sum(n, m, lambda(i, zeros(x,y))) -> zeros(x,y)
+sum(n, m, lambda(i, madd(x, y))) -> 
+        madd(sum(n,m,lambda(i, x)), sum(n,m, lambda(i, y)))
+
+operator delta 2
+
+x * delta(i,j) -> delta(i,j) * x
+x * (delta(i,j) * y) -> delta(i,j) * (x * y)
+
+sum(n, m, lambda(i, scale(delta(i,j), x))) -> subs(i, j, x)
+sum(n, m, lambda(i, delta(i,j) * x)) -> subs(i, j, x)
+sum(n, m, lambda(i, delta(i,j))) -> 1.0
+sum(n, m, lambda(i, scale(delta(i,j) * y, x))) -> subs(i, j, scale(y,x))
+delta(i,i) -> 1.0
+
+
+
+require iterate.cnut
+require pair.cnut
+
+operator sum 4
+typeof(sum(_,_,_,T)) -> T
+//generate(sum(n, m, i => f)) -> generate(sum(n, m, i => f, typeof(f)))
+(sum(n, m, i => f)) -> (sum(n, m, i => f, typeof(f)))
+
+sum(n, m, f, Real) ->
+	let z = 0.0
+	second(
+	    iterate(
+	      s => first(s) < m,
+	      s => pair(first(s)+1, beta(f, first(s)) + second(s)),
+	      pair(n, z)
+	  ))
+
+
+rows(sum(_, _, i => f, Matrix))  -> rows(f)
+cols(sum(_, _, i => f, Matrix))  -> cols(f)
+
+codegen sum(n, m, i => f, Matrix) {
+	%i = local native
+	%n = generate n
+	store %i <- %n
+
+	%m = generate m
+
+	%size = generate size(f)
+	%acc = generate(zeros(rows(f),cols(f)))
+	goto head
+
+	:head
+		%ival = load %i
+		%cond = lt %ival %m
+		if %cond then body else end
+
+	:body
+		bind i %ival
+		%item = generate f
+		unbind i
+
+		call cblas_daxpy(%size, 1.0, %item, native 1, %acc, native 1)
+		
+		%inext = add %ival native 1
+		store %i <- %inext
+		goto head
+
+	:end
+		return %acc
+}

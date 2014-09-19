@@ -1,0 +1,55 @@
+/*
+Gabardine
+Copyright (c) Microsoft Corporation
+All rights reserved.
+Licensed under the Apache License, Version 2.0 (the License); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+THIS CODE IS PROVIDED ON AN  *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE, MERCHANTABLITY OR NON-INFRINGEMENT.
+See the Apache Version 2.0 License for specific language governing permissions and limitations under the License.
+*/
+operator pair 2
+operator first 1
+operator second 1
+
+// Pair type
+operator Pair 2
+	typeof(pair(u,v)) -> Pair(typeof(u), typeof(v))
+	isScalar(Pair(T1,T2)) -> true //isScalar(T1) & isScalar(T2)
+
+size(p, Pair(_,_)) -> size(first(p)) + size(second(p))
+
+first(pair(u,_)) -> u
+second(pair(_,v)) -> v
+
+typeof(first(p)) -> first(typeof(p))
+typeof(second(p)) -> second(typeof(p))
+first(Pair(u,_)) -> u
+second(Pair(_,v)) -> v
+
+codegen pair(u,v) {
+	%u = generate u
+	%v = generate v
+	%result = struct %u %v
+	return %result
+}
+
+codegen first(p) {
+	%pair = generate p
+	%result = field 0 %pair
+	return %result
+}
+
+codegen second(p) {
+    %pair = generate p
+	%result = field 1 %pair
+	return %result
+}
+
+operator pair_to_vector 1
+operator pair_to_vector 2 
+typeof(pair_to_vector(_,_)) -> Matrix
+pair_to_vector(p) -> pair_to_vector(p, typeof(p))
+rows(pair_to_vector(_, Pair(Real,Real))) -> 2
+cols(pair_to_vector(_, _)) -> 1
+
+operator vector_to_pair 1
+typeof(vector_to_pair(_)) -> Pair(Real,Real)

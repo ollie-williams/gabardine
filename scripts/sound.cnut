@@ -1,0 +1,53 @@
+/*
+Gabardine
+Copyright (c) Microsoft Corporation
+All rights reserved.
+Licensed under the Apache License, Version 2.0 (the License); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+THIS CODE IS PROVIDED ON AN  *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE, MERCHANTABLITY OR NON-INFRINGEMENT.
+See the Apache Version 2.0 License for specific language governing permissions and limitations under the License.
+*/
+require logic.cnut
+
+// Parameters and constants are trivially sound
+∀x,    isConst(x) -> breakout(isConst(x)) {priority -1}
+∀x,    isParam(x) \/ isConst(x) => sound(x) -> true
+
+// Lambda soundness
+operator rhs 1
+operator lhs 1
+forall y, rhs(_ -> y) -> y
+forall x, lhs(x -> _) -> x
+
+forall st s t,
+       (st = (s -> t)) -> (lhs(st) = s) & (rhs(st) = t)
+
+forall x y,
+       typeof(lambda(x,y)) -> (typeof(x) -> typeof(y))
+forall x y, sound(lambda(x,y)) -> sound(y)
+
+
+forall x f z, typeof(eval(λx -> f, z)) -> typeof(subs(f, x, z))
+forall x f z,
+       sound(eval(λx -> f, z)) ->
+          subs(sound(f) ∧ (typeof(x) = typeof(z)), x, fresh(x))
+
+
+
+// Let soundness
+forall z, 
+       typeof(let _ = _ in z) -> typeof(z)
+forall x y z, 
+       sound(let x = y in z) -> 
+       		 sound(x) ∧ sound(y) ∧ sound(z)
+		 ∧ (typeof(x) = typeof(y))
+
+forall x a b z,
+        sound(let x = λa -> b in z) -> sound(subs(z, x, λa -> b))
+
+
+// Built-in special operators
+forall h t, sound(cons(h, t)) -> sound(h) /\ sound(t)
+sound(nil) -> true
+
+forall u, sound(out_param(u)) -> sound(u)
+forall u, sound(return_value(u)) -> sound(u)

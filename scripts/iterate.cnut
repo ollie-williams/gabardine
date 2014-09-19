@@ -1,0 +1,86 @@
+/*
+Gabardine
+Copyright (c) Microsoft Corporation
+All rights reserved.
+Licensed under the Apache License, Version 2.0 (the License); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+THIS CODE IS PROVIDED ON AN  *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE, MERCHANTABLITY OR NON-INFRINGEMENT.
+See the Apache Version 2.0 License for specific language governing permissions and limitations under the License.
+*/
+require type.cnut
+
+operator iterate 3
+forall init, inherit(iterate(_, _, init)) -> init
+
+operator iterate 4
+forall init, inherit(iterate(_, _, init, _)) -> init
+
+// Move let bindings out of iterate body
+forall x y c u init, 
+    iterate(let x = y in c, u, init) -> 
+        let x = y
+        iterate(c, u, init)
+
+forall c x y u init,
+    iterate(c, let x = y in u, init) -> 
+        let x = y
+        iterate(c, u, init)
+
+forall a b c, 
+    generate(iterate(a, b, c)) -> generate(iterate(a, b, c, isScalar(typeof(c))))
+
+foreign void loop_dump(double* state, native n)
+foreign void int_dump(native* n)
+
+codegen iterate(lambda(s, c), lambda(u, v), init, true) {
+	%init = generate init
+	%state = local typeof %init
+	store %state <- %init
+	goto head
+
+  :head
+        //call int_dump(%state)
+  	%s = load %state
+  	bind s %s
+  	%c = generate c
+	unbind s
+  	if %c then body else exit
+
+  :body
+  	bind u %s
+  	%s' = generate v
+        unbind u
+  	store %state <- %s' 
+        goto head
+
+  :exit
+  	return %s
+}
+
+operator iterate_vector 4
+forall a b c,
+    generate(iterate(a, b, c, false)) -> generate(iterate_vector(a, b, c, size(c)))
+
+codegen iterate_vector(lambda(s, c), lambda(u, v), init, n) {
+  %n = generate n
+  %init = generate init
+  %state = alloc typeof %init %n
+  copy %state <- %init %n
+  goto head
+
+  :head
+    call loop_dump(%state, %n)
+    bind s %state
+    %c = generate c
+    unbind s
+    if %c then body else exit
+
+  :body
+    bind u %state
+    %s' = generate v
+    unbind u
+    copy %state <- %s' %n
+    goto head
+
+  :exit
+    return %state
+}

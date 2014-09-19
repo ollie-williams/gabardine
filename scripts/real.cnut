@@ -1,0 +1,288 @@
+/*
+Gabardine
+Copyright (c) Microsoft Corporation
+All rights reserved.
+Licensed under the Apache License, Version 2.0 (the License); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+THIS CODE IS PROVIDED ON AN  *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE, MERCHANTABLITY OR NON-INFRINGEMENT.
+See the Apache Version 2.0 License for specific language governing permissions and limitations under the License.
+*/
+require sound.cnut
+
+// Type conversion
+  operator cast_to 2
+
+  operator ^ right 80
+  
+operator * left 70
+forall u v, sound(u * v) -> sound(u) /\ sound(v) /\ (typeof(u)=typeof(v))
+forall u, typeof(u * _) -> typeof(u)
+
+operator / left 70
+forall u v, sound(u / v) -> sound(u) /\ sound(v) /\ (typeof(u)=typeof(v))
+forall u, typeof(u / _) -> typeof(u)
+
+operator + left 60
+forall u v, sound(u + v) -> sound(u) /\ sound(v) /\ (typeof(u)=typeof(v))
+forall u, typeof(u + _) -> typeof(u)
+
+operator - left 60
+forall u v, sound(u - v) -> sound(u) /\ sound(v) /\ (typeof(u)=typeof(v))
+forall u, typeof(u - _) -> typeof(u)
+
+operator < left 50
+operator > left 50
+operator (≤ <=) left 50
+operator (≥ >=) left 50
+  
+operator floor 1
+operator sin 1
+operator cos 1
+operator tan 1
+operator sinc 1
+operator sqrt 1
+operator atan 1
+operator exp 1
+operator log 1
+  
+      _ * 0.0 -> 0.0
+      0.0 * _ -> 0.0
+∀x,  x * 1.0 -> x
+∀x,  1.0 * x -> x
+      0.0 / _ -> 0.0
+      _ / 0.0 -> failwith("Divide by zero")
+∀x,  x / 1.0 -> x    
+∀x,  x + 0.0 -> x
+∀x,  0.0 + x -> x
+∀x,  x - 0.0 -> x
+∀x,  0.0 - x -> -1.0 * x
+      0.0 ^ _ -> 0.0
+      _ ^ 0.0 -> 1.0
+      1.0 ^ _ -> 1.0
+∀x,  x ^ 1.0 -> x
+
+      _ * 0 -> 0
+      0 * _ -> 0
+∀x,  x * 1 -> x
+∀x,  1 * x -> x
+      0 / _ -> 0
+∀x,  x / 1 -> x
+∀x,  x + 0 -> x
+∀x,  0 + x -> x
+∀x,  x - 0 -> x
+∀x,  0 - x -> -1 * x
+      0 ^ _ -> 0
+      _ ^ 0 -> 1
+      1 ^ _ -> 1
+∀x,  x ^ 1 -> x
+
+∀x y,  (x * y) / x -> y
+∀x y,  x * (y / x) -> y
+∀x y,  (y * x) / x -> y
+
+∀x,  x / x -> cast_to(1, typeof(x))
+∀x,  x + x -> cast_to(2, typeof(x)) * x
+∀x,  x - x -> cast_to(0, typeof(x))
+      cast_to(0, Real) -> 0.0
+      cast_to(1, Real) -> 1.0
+      cast_to(2, Real) -> 2.0
+      cast_to(0, Integer) -> 0
+      cast_to(1, Integer) -> 1
+      cast_to(2, Integer) -> 2
+
+∀x,  sqrt(x*x) -> x
+∀x,  sqrt(x)*sqrt(x) -> x
+
+      floor(0.0) -> 0.0
+
+      sin(0.0) -> 0.0    
+      cos(0.0) -> 1.0    
+      sinc(0.0) -> 1.0
+∀x,  sin(x) / cos(x) -> tan(x)
+
+∀x,  exp(log(x)) -> x
+∀x,  log(exp(x)) -> x
+      exp(0.0) -> 1.0
+
+
+// Reversible rules
+∀x y,    x + y = y + x
+∀x y,    x * y = y * x
+
+∀x y z,  x*(y + z) = x*y + x*z
+∀x y z,  x*(y - z) = x*y - x*z
+∀x y z,  (y + z)*x = y*x + z*x
+∀x y z,  (y - z)*x = y*x - z*x
+    
+∀x y z,  x + (y + z) = (x + y) + z
+∀x y z,  x + (y - z) = (x + y) - z
+∀x y z,  x - (y - z) = (x - y) + z
+∀x y z,  x - (y + z) = (x - y) - z
+∀x y z,  x * (y * z) = (x * y) * z
+
+∀x n,    x + n*x = (n + 1)* x
+∀x n m,  m*x + n*x = (m + n)*x
+∀x n,    n*x - x = (n-1) * x
+∀x n m,  m*x - n*x = (m - n)*x
+
+∀x y,    x / y = x * (1.0 / y) 
+
+   
+// Multiply add
+operator multiplyadd 3
+
+  ∀x y z,    sound(multiplyadd(x, y, z)) ->
+                sound(x) ∧ sound(y) ∧ sound(z) ∧
+		(typeof(x) = typeof(y)) ∧ (typeof(x) = typeof(z))
+  ∀x,        typeof(multiplyadd(x, _, _)) -> typeof(x)		
+
+  ∀x y z,    (typeof(x) = Real) => generate(x*y + z) -> generate(multiplyadd(x, y, z))
+  ∀x y z,    (typeof(x) = Real) => generate(z + x*y) -> generate(multiplyadd(x, y, z))
+
+  foreign double llvm.fmuladd.f64(double, double, double)
+  ∀x y z, codegen multiplyadd(x, y, z) {
+      %x = generate(x)
+      %y = generate(y)
+      %z = generate(z)
+      %r = call llvm.fmuladd.f64(%x, %y, %z)
+      return %r
+    }
+    
+∀x y,
+  codegen x + y {
+    %x = generate(x)
+    %y = generate(y)
+    %r = add %x %y
+    return %r
+  }
+
+∀x y,
+  codegen x - y {
+    %x = generate(x)
+    %y = generate(y)
+    %r = sub %x %y
+    return %r
+  }
+  
+∀x y,
+  codegen x * y {
+    %x = generate(x)
+    %y = generate(y)
+    %r = mul %x %y
+    return %r
+  }
+
+∀x y,
+  codegen x / y {
+    %x = generate(x)
+    %y = generate(y)
+    %r = div %x %y
+    return %r
+  }
+
+∀x y,
+  codegen x < y {
+    %x = generate(x)
+    %y = generate(y)
+    %r = lt %x %y
+    return %r
+  }
+
+∀x y,
+  codegen x > y {
+    %x = generate(x)
+    %y = generate(y)
+    %r = gt %x %y
+    return %r
+  }
+
+     
+// Use LLVM intrinsics where possible
+
+foreign double llvm.pow.f64(double, double)
+∀x y,
+  (typeof(y) = Real) =>
+    codegen x ^ y {
+      %1 = generate(x)
+      %2 = generate(y)
+      %r = call llvm.pow.f64(%1, %2)
+      return %r
+    }
+    
+foreign double llvm.powi.f64(double, int32)
+∀x y,
+  (typeof(y) = Integer) =>
+    codegen x ^ y { 
+      %1 = generate(x)
+      %2 = generate(y)
+      %r = call llvm.powi.f64(%1, %2)
+      return %r
+    } 
+
+
+foreign double llvm.floor.f64(double)
+∀x, codegen floor(x) { 
+  %1 = generate(x)
+  %r = call llvm.floor.f64(%1)
+  return %r
+} 
+      
+foreign double llvm.sin.f64(double)
+∀x, codegen sin(x) { 
+  %1 = generate(x)
+  %r = call sin(%1)
+  return %r
+} 
+
+foreign double llvm.cos.f64(double)
+∀x, codegen cos(x) { 
+  %1 = generate(x)
+  %r = call cos(%1)
+  return %r
+} 
+
+foreign double tan(double)
+∀x, codegen tan(x) { 
+  %1 = generate(x)
+  %r = call tan(%1)
+  return %r
+} 
+
+foreign double llvm.sqrt.f64(double)
+∀x, codegen sqrt(x) { 
+  %1 = generate(x)
+  %r = call sqrt(%1)
+  return %r
+} 
+
+foreign double atan(double)
+∀x, codegen atan(x) { 
+  %1 = generate(x)
+  %r = call atan(%1)
+  return %r
+}    
+
+foreign double llvm.exp.f64(double)
+∀x, codegen exp(x) { 
+  %1 = generate(x)
+  %r = call llvm.exp.f64(%1)
+  return %r
+}    
+
+foreign double llvm.log.f64(double)
+∀x, codegen log(x) { 
+  %x = generate(x)
+  %r = call llvm.log.f64(%x)
+  return %r
+}
+   
+∀x, codegen cast_to(x, Real) {
+  %x = generate(x)
+  %r = cast double %x
+  return %r
+}
+
+∀x, codegen cast_to(x, Integer) {
+  %x = generate(x)
+  %r = cast int32 %x
+  return %r
+}

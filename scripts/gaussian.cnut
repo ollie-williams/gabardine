@@ -1,0 +1,187 @@
+/*
+Gabardine
+Copyright (c) Microsoft Corporation
+All rights reserved.
+Licensed under the Apache License, Version 2.0 (the License); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+THIS CODE IS PROVIDED ON AN  *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE, MERCHANTABLITY OR NON-INFRINGEMENT.
+See the Apache Version 2.0 License for specific language governing permissions and limitations under the License.
+*/
+require iterate.cnut
+require diff.cnut
+require array.cnut
+require mkl.cnut
+
+operator gradientDescent 3
+
+gradientDescent(x, f, init) ->
+	let g = diff(f, x)
+	let cnd = x => dot(g,g) > 1e-6
+	let upd = x => madd(x, scale(-1e-4, g))
+	iterate(cnd, upd, init)
+
+operator gauss 3
+
+gauss(x, mu, L) ->
+	let d = mmul(L, msub(x,mu))
+    let mahal = dot(d, d)
+    exp(-0.5 * mahal) * det(L)
+
+
+//---------------------------//
+//  Matrix shape mangling    //
+//---------------------------//
+
+operator subcols 3
+typeof(subcols(_,_,_)) -> Matrix
+rows(subcols(X, _, _)) -> rows(X)
+cols(subcols(_, _, n)) -> n
+
+operator subrows 3
+typeof(subrows(_,_,_)) -> Matrix
+rows(subrows(_, _, n)) -> n
+cols(subrows(X, _, n)) -> cols(X)
+
+operator subvec 3
+typeof(subvec(_,_,_)) -> Matrix
+rows(subvec(_,_,n)) -> n
+cols(subvec(_,_,_)) -> 1
+
+Diff(subvec(v, i, n), u) -> subvec(Diff(v,u), i, n)
+subvec(wiggle(A, a), i, n) -> 
+	let m = rows(A)
+	wiggle(
+		subvec(A, i, n),
+		subrows(a, i, n)
+	)
+
+operator reshape 3
+typeof(reshape(_,_,_)) -> Matrix
+rows(reshape(_,r,_)) -> r
+cols(reshape(_,_,c)) -> c
+
+Diff(reshape(v, r, c), u) -> reshape(Diff(v,u), r, c)
+reshape(wiggle(A,a), r, c) -> wiggle(reshape(A,r,c), a)
+
+generate(vec(x)) -> generate(reshape(x, size(x), 1))
+
+codegen reshape(x, _, _) {
+	%r = generate x
+	return %r
+}
+
+codegen subvec(x, i, _) {
+	%x = generate x
+	%i = generate i
+	%ptr = offset %x %i
+	return %ptr
+}
+
+codegen subrows(x, i, n) {
+	%x = generate x
+	%i = generate i
+	%n = generate n
+	%m = generate rows(x)
+	%k = generate cols(x)
+	%nk = mul %n %k
+	%ret = alloc double* %nk
+	%a = offset %x %i
+	call MKL_Domatcopy(
+	    int8 67, // 'C' for column-major
+	    int8 78, // 'N' for not-transposed,
+	    %n,
+	    %k,
+	    1.0,
+	    %a,
+	    %m,
+	    %ret,
+	    %n
+    )
+    return %ret
+}
+
+operator likelihood 2
+
+likelihood(theta, data) ->
+	let n = length(data)
+	let d = size(data[0])
+	let mu = subvec(theta, 0, d)
+	let L = reshape(subvec(theta, d, d*d), d, d)
+	//let mu = first(theta)
+	//let L = second(theta)
+	(-1.0) * sum(0, n, i => log(gauss(data[i], mu, L)))
+
+
+operator problem 3
+problem(theta, t0, X) -> gradientDescent(
+	theta,
+	likelihood(theta, X),
+	t0
+)
+
+
+
+
+param theta
+param d, n, t0, X
+
+typeof(d) -> Integer
+typeof(n) -> Integer
+
+typeof(theta) -> Matrix
+rows(theta) -> d*d + d
+cols(theta) -> 1
+inherit(t0) -> theta
+
+typeof(X) -> Array(Matrix)
+length(X) -> n
+rows(X[_]) -> d
+cols(X[_]) -> 1
+
+let lhood = likelihood(theta, X)
+
+
+
+module Gaussian {
+	function fitMean {
+		in native d     // Dimensionality
+		typeof(d) -> Integer
+
+		typeof(theta) -> Matrix
+		rows(theta) -> d*d + d
+		cols(theta) -> 1
+		
+		in double* theta0 
+		inherit(theta0) -> theta
+
+		in native n     // Number of data points
+
+		in double* X    // Data
+		length(X) -> n
+		typeof(X) -> Array(Matrix)
+		rows(X[_]) -> d
+		cols(X[_]) -> 1
+
+		out double* problem(theta, theta0, X)
+	}
+
+	function objective {
+		in native d     // Dimensionality
+		typeof(d) -> Integer
+
+		in double* theta
+		typeof(theta) -> Matrix
+		rows(theta) -> d*d + d
+		cols(theta) -> 1
+
+		in native n     // Number of data points
+
+		in double* X    // Data
+		length(X) -> n
+		typeof(X) -> Array(Matrix)
+		rows(X[_]) -> d
+		cols(X[_]) -> 1
+		
+		return double likelihood(theta, X)
+		out double* diff(likelihood(theta, X), theta)
+	}
+}

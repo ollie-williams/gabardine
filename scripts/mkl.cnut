@@ -1,0 +1,345 @@
+/*
+Gabardine
+Copyright (c) Microsoft Corporation
+All rights reserved.
+Licensed under the Apache License, Version 2.0 (the License); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+THIS CODE IS PROVIDED ON AN  *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE, MERCHANTABLITY OR NON-INFRINGEMENT.
+See the Apache Version 2.0 License for specific language governing permissions and limitations under the License.
+*/
+//-------------------------------------------//
+// BLAS function signatures from MKL library //
+//-------------------------------------------//
+
+
+foreign double cblas_ddot(native N, double* X, native incX,
+                  double* Y, native incY)
+
+foreign void cblas_dcopy(native N, double* X, native incX,
+                 double* Y, native incY)
+
+foreign void cblas_daxpy(native N, double alpha, double* X,
+                 native incX, double* Y, native incY)
+
+foreign void cblas_dscal(native N, double alpha, double* X, native incX)
+
+foreign void MKL_Domatcopy(int8 ordering, int8 trans, native rows, native cols, 
+                  double alpha, double* A, native lda, double* B, native ldb)
+
+foreign int8* MKL_malloc(native, int32)
+foreign void MKL_free(int8*)
+
+//----------------//
+// Addition rules //
+//----------------//        
+operator saxpy 4 
+generate(madd(a,b)) -> generate(saxpy(1.0, a, b, size(a)))
+generate(msub(a,b)) -> generate(saxpy(-1.0, b, a, size(a)))
+generate(madd(scale(x,a), b)) -> generate(saxpy(x, a, b, size(a)))
+generate(madd(b, scale(x,a))) -> generate(saxpy(x, a, b, size(a)))
+
+// Reorder as a tail call to avoid copies. Blind application of this rule breaks
+// some situations in which a cse detection would help. That kind of smart
+// optimization is going to have to wait for a smarter optimizer.
+saxpy(y, saxpy(x, a, b, n), c, n) -> saxpy(x*y, a, saxpy(y, b, c, n), n)
+
+size(saxpy(_,_,_,n)) -> n
+
+codegen saxpy(a, x, y, n) {
+    %y = generate y
+    %n = generate n
+    %result = alloc float64* %n
+    copy %result <- %y %n
+    %x = generate x
+    %a = generate a
+    call cblas_daxpy(%n, %a, %x, native 1, %result, native 1)
+    return %result
+}
+
+
+//-------------//
+// Scale rules //
+//-------------//
+operator scale 3
+generate(scale(a,b)) -> generate(scale(a, b, size(b)))
+size(scale(_,_,n)) -> n
+codegen scale(a,b,n) {
+  %n = generate(n)
+  %a = generate(a)
+  %b = generate(b)
+  %result = alloc double* %n
+  copy %result <- %b %n
+  call cblas_dscal(%n, %a, %result, 1)
+  return %result
+}                 
+   
+
+
+//-------------//
+// Dot product //
+//-------------//
+operator dot 3
+generate(dot(x,y)) -> generate(dot(x, y, size(x)))
+size(dot(_,_,n)) -> n
+codegen dot(a,b,n) {
+  %a = generate(a)
+  %b = generate(b)
+  %n = generate(n)
+  %r = call cblas_ddot(%n, %a, 1, %b, 1)
+  return %r
+}
+
+
+
+//----------------------//
+// Multiplication rules //
+//----------------------//
+operator gemm 7
+
+generate(mmul(a       , b       )) -> generate(gemm(false, false, a, b, rows(a), rows(b), cols(b)))
+generate(mmul(trans(a), b       )) -> generate(gemm(true, false, a, b, cols(a), rows(b), cols(b)))
+generate(mmul(a       , trans(b))) -> generate(gemm(false, true, a, b, rows(a), cols(b), rows(b)))
+generate(mmul(trans(a), trans(b))) -> generate(gemm(true, true, a, b, cols(a), cols(b), rows(b)))
+
+gemm(_, _, a, b, 1, n, 1) -> dot(a, b, n)
+
+foreign void cblas_dgemm(int32 Order, int32 TransA,
+                 int32 TransB, native M, native N,
+                 native K, double alpha, double* A,
+                 native lda, double* B, native ldb,
+                 double beta, double* C, native ldc)
+
+foreign void mark(uint64 n)              
+
+codegen gemm(false, false, a, b, m, k, n) {
+  %m = generate m
+  %n = generate n
+  %k = generate k
+  %a = generate a
+  %b = generate b
+  %mn = mul %m %n
+  %result = alloc double* %mn
+  call cblas_dgemm(102, 111, 111, %m, %n, %k, 1.0, %a, %m, %b, %k, 0.0, %result, %m)
+  return %result
+}
+
+codegen gemm(true, true, a, b, m, k, n) {
+  %m = generate m
+  %n = generate n
+  %k = generate k
+  %a = generate a
+  %b = generate b
+  %s = mul %m %n
+  %result = alloc double* %s
+  call cblas_dgemm(102, 112, 112, %m, %n, %k, 1.0, %a, %k, %b, %n, 0.0, %result, %m)
+  return %result
+}
+
+codegen gemm(false, true, a, b, m, k, n) {
+  %m = generate m
+  %n = generate n
+  %k = generate k
+  %a = generate a
+  %b = generate b
+  %s = mul %m %n
+  %result = alloc double* %s
+  call cblas_dgemm(102, 111, 112, %m, %n, %k, 1.0, %a, %m, %b, %n, 0.0, %result, %m)
+  return %result
+}
+
+codegen gemm(true, false, a, b, m, k, n) {
+  %m = generate m
+  %n = generate n
+  %k = generate k
+  %a = generate a
+  %b = generate b
+  %s = mul %m %n
+  %result = alloc double* %s
+  call cblas_dgemm(102, 112, 111, %m, %n, %k, 1.0, %a, %k, %b, %k, 0.0, %result, %m)
+  return %result
+}
+
+foreign void memset(int8* buffer, int8 value, native size)
+codegen zeros(n,m) {
+  %n = generate n
+  %m = generate m
+  %nm = mul %n %m
+  %sz = cast native %nm
+  %sz8 = mul %sz native 8
+  %bf = alloc int8* %sz8
+  call memset(%bf, int8 0, %sz8)
+  %r = cast double* %bf
+  return %r
+}
+
+
+//---------------------------------------------//
+// LAPACK function signatures from MKL library //
+//---------------------------------------------//
+foreign native LAPACKE_dgetrf( int32 matrix_order, native m, native n,
+                           double* a, native lda, native* ipiv )
+
+foreign native LAPACKE_dgetri( int32 matrix_order, native n, double* a,
+                           native lda, native* ipiv )
+
+foreign native LAPACKE_dgetrs( int32 matrix_order, int8 trans, native n,
+                           native nrhs, double* a, native lda,
+                           native* ipiv, double* b, native ldb )
+
+//------------------------------------//
+// Solving linear equations           //
+//------------------------------------//
+operator LUFactorization 0
+operator getrf 2
+  typeof(getrf(_,_)) -> LUFactorization
+
+codegen getrf(A, n) {
+  %A = generate A
+  %n = generate n
+  %nn = mul %n %n
+  %bf = alloc double* %nn
+  copy %bf <- %A %nn
+  %piv = alloc native* %n
+  call LAPACKE_dgetrf(int32 102, %n, %n, %bf, %n, %piv)
+  %r = struct %bf %piv
+  return %r
+}
+
+// An implementation for computing the determinant from the LU factorization
+foreign double det(double* a, native* piv, native n)
+
+// Get determinant from LU factorization
+operator det 2
+generate(det(a)) -> generate(det(getrf(a, rows(a)), rows(a)))
+
+codegen det(lu, n) {
+  %lu = generate lu
+  %n = generate n
+  %A = field 0 %lu
+  %piv = field 1 %lu
+  %r = call det(%A, %piv, %n)
+  return %r
+}
+
+operator getri 2
+  typeof(getri(_,_)) -> Matrix
+  rows(getri(_, n)) -> n
+  cols(getri(_, n)) -> n
+
+generate(inv(x)) -> generate(getri(getrf(x, rows(x)), rows(x)))
+
+codegen getri(LU, n) {
+  
+  %lu = generate LU
+  %A = field 0 %lu
+  %piv = field 1 %lu
+
+  %n = generate n
+  %nn = mul %n %n
+  %r = alloc double* %nn
+  copy %r <- %A %nn
+
+  call LAPACKE_dgetri(
+      102,             // Column-major
+      %n,              // Rows
+      %r,              // Input/output storage
+      %n,              // Leading dimension
+      %piv)            // pivot matrix
+  return %r
+}
+
+//------------------------------------------------//
+// Transpose                                      //
+//------------------------------------------------//
+operator transscale 4
+generate(trans(a)) -> generate(transscale(1.0, a, rows(a), cols(a)))
+generate(scale(b, trans(a))) -> generate(transscale(b, a, rows(a), cols(a)))
+generate(trans(scale(b, a))) -> generate(transscale(b, a, rows(a), cols(a)))
+generate(transscale(b, a, 1, _)) -> generate(scale(b,a))
+generate(transscale(b, a, _, 1)) -> generate(scale(b,a))
+
+codegen transscale(b, a, n, m) {
+  %n = generate n
+  %m = generate m
+  %a = generate a
+  %nm = mul %n %m
+  %b = generate b
+  %result = alloc double* %nm
+  call MKL_Domatcopy(
+    int8 67, // 'C' for column-major
+    int8 84, // 'T' for transpose,
+    %n,
+    %m,
+    %b,
+    %a,
+    %n,
+    %result,
+    %m
+  )
+  return %result
+}
+
+/*
+
+// Solve linear equation from LU factorization
+operator getrs 3
+  typeof(getrs(_,_,_)) -> Matrix
+  rows(getrs(_, n, _)) -> n
+  cols(getrs(_, _, B)) -> cols(B)
+
+codegen k <- getrs(LU, n, B) {
+  
+  k <- generate(B)
+
+  using LU = LU {
+    let a = extract LU 0
+    let ipiv = extract LU 1
+    let n = generate(n)
+    let nrhs = generate(cols(B))
+
+    call LAPACKE_dgetrs(
+      cast int32 102, // Column-major
+      cast int8 78,   // 'N' (= not transposed)
+      n,
+      nrhs,
+      a,
+      n,
+      ipiv,
+      k,
+      n)
+  }
+}
+
+
+*/
+
+//------------------------------------------------//
+// Extra runtime functions etc. not in the MKL    //
+//------------------------------------------------//
+foreign void eye(native, double*)
+foreign void kron_eye(double* a, native a_rows, native a_cols, native n, double* dst)
+foreign void eye_kron(double* a, native a_rows, native a_cols, native n, double* dst)
+foreign void kron(double* a, double* b, native ar, native ac, native br, native bc, double* dst)
+
+codegen eye(n) {
+  %n = generate n
+  %nn = mul %n %n
+  %bf = alloc double* %nn
+  call eye(%n, %bf)
+  return %bf
+}
+
+operator kron 6
+generate(kron(a,b)) -> generate(kron(a,b,rows(a), cols(a), rows(b), cols(b)))
+
+codegen kron(A, B, ra, ca, rb, cb) {
+  %a = generate A
+  %b = generate B
+  %ra = generate ra
+  %rb = generate rb
+  %ca = generate ca
+  %cb = generate cb
+  %size = generate size(kron(A,B))
+  %r = alloc double* %size
+  call kron(%a, %b, %ra, %ca, %rb, %cb, %r)
+  return %r
+}

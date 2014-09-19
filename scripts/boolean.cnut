@@ -1,0 +1,43 @@
+/*
+Gabardine
+Copyright (c) Microsoft Corporation
+All rights reserved.
+Licensed under the Apache License, Version 2.0 (the License); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+THIS CODE IS PROVIDED ON AN  *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE, MERCHANTABLITY OR NON-INFRINGEMENT.
+See the Apache Version 2.0 License for specific language governing permissions and limitations under the License.
+*/
+operator Bool 0
+
+operator and 2
+operator & 2
+operator or 2
+operator | 2
+operator not 1
+
+a | b -> or(a, b)
+a & b -> and(a, b)
+	
+and(a, true) -> a
+and(true, a) -> a
+and(_, false) -> false
+and(false, _) -> false
+and(a, a) -> a
+
+or(_, true) -> true
+or(true, _) -> true
+or(a, false) -> a
+or(false, a) -> a
+or(a, a) -> a
+
+not(true) -> false
+not(false) -> true
+not(not(a)) -> a
+
+equal(a, a) -> true
+
+codegen true {
+	return int1 1
+}
+codegen false {
+	return int1 0
+}

@@ -1,0 +1,26 @@
+/*
+Gabardine
+Copyright (c) Microsoft Corporation
+All rights reserved.
+Licensed under the Apache License, Version 2.0 (the License); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+THIS CODE IS PROVIDED ON AN  *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE, MERCHANTABLITY OR NON-INFRINGEMENT.
+See the Apache Version 2.0 License for specific language governing permissions and limitations under the License.
+*/
+operator beta 2
+beta(lambda(x, M), N) -> subs(M, x, N)
+beta(let(x,y,z), N) -> let(x, y, beta(z, N))
+
+operator map 2
+map(f, cons(h, t)) -> cons(beta(f, h), map(f, t))
+map(_, nil) -> nil
+
+let(x, y, f) = subs(f, x, y)
+size(let(x, y, f)) -> size(f)
+
+codegen let(x, y, f) {
+    %y = generate y
+    bind x %y
+    %r = generate f
+    unbind x
+    return %r
+}

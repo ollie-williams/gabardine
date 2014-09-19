@@ -1,0 +1,27 @@
+/*
+Gabardine
+Copyright (c) Microsoft Corporation
+All rights reserved.
+Licensed under the Apache License, Version 2.0 (the License); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+THIS CODE IS PROVIDED ON AN  *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE, MERCHANTABLITY OR NON-INFRINGEMENT.
+See the Apache Version 2.0 License for specific language governing permissions and limitations under the License.
+*/
+operator succ 1
+operator pred 1
+operator nat 1
+
+nat(0) -> 0              
+nat(1) -> succ(0)       
+nat(2) -> succ(nat(1)) 
+nat(3) -> succ(nat(2)) 
+nat(4) -> succ(nat(3)) 
+nat(5) -> succ(nat(4))  
+nat(6) -> succ(nat(5))  
+nat(7) -> succ(nat(6))  
+nat(8) -> succ(nat(7)) 
+nat(9) -> succ(nat(8))
+
+
+pred(succ(n)) -> n
+succ(pred(n)) -> n
+

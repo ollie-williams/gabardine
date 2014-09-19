@@ -1,0 +1,37 @@
+/*
+Gabardine
+Copyright (c) Microsoft Corporation
+All rights reserved.
+Licensed under the Apache License, Version 2.0 (the License); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+THIS CODE IS PROVIDED ON AN  *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE, MERCHANTABLITY OR NON-INFRINGEMENT.
+See the Apache Version 2.0 License for specific language governing permissions and limitations under the License.
+*/
+operator isScalar 1
+
+isScalar(Real) -> true
+isScalar(Integer) -> true
+
+/* forall x, isConst(x) => breakout(isScalar(x), typeof(x))
+
+
+operator type_fail 2
+
+forall x, typeof(x) -> typeof(inherit(x))
+forall x, typeof(inherit(x)) -> breakout(typeof(x))
+//type_fail(x, false) -> failwith(cons("Couldn't infer type of ", x))
+forall x y z, typeof(let x = y in z) -> typeof(z)
+
+operator typeofElement 1
+forall x, typeof(x[_]) -> typeofElement(typeof(x))
+forall x y z, typeofElement(let x = y in z) -> typeofElement(z)
+
+
+operator isScalar 1
+forall x, isScalar(x) -> isScalar(inherit(x))
+forall x, isScalar(inherit(x)) -> failwith(cons("Cannot determine whether ", cons(x, " is scalar.")))
+forall x y z, isScalar(let x = y in z) -> isScalar(z)
+
+operator size 2
+forall x, size(x) -> size(x, typeof(x)) // Maybe there's a type-specific way to get sizes?
+
+*/

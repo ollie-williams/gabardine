@@ -1,0 +1,96 @@
+/*
+Gabardine
+Copyright (c) Microsoft Corporation
+All rights reserved.
+Licensed under the Apache License, Version 2.0 (the License); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+THIS CODE IS PROVIDED ON AN  *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE, MERCHANTABLITY OR NON-INFRINGEMENT.
+See the Apache Version 2.0 License for specific language governing permissions and limitations under the License.
+*/
+require type.cnut
+require real.cnut
+require lambda.cnut
+
+operator Array 1
+
+typeofElement(Array(T)) -> T
+
+operator length 1
+  length(x) -> length(inherit(x))
+  length(inherit(x)) -> failwith("Unable to deduce length for (supposed) array ")
+
+size(a, Array(_)) -> length(a) * size(a[0])
+
+
+operator index 3
+generate(index(ary, i)) -> generate(index(ary, i, isScalar(typeofElement(typeof(ary)))))
+
+codegen index(ary, i, true) {
+  %ary = generate ary
+  %i = generate i
+  %ptr = offset %ary %i
+  %result = load %ptr
+  return %result
+}
+
+codegen index(ary, i, false) {
+    %ary = generate ary
+    %i = generate i
+    %elementSize = generate size(index(ary, 0))
+    %off = mul %elementSize %i
+    %src = offset %ary %off
+    return %src
+}
+
+
+operator build 2
+
+size(build(n, lambda(_,f))) -> n * size(f)
+length(build(n, _)) -> n
+typeof(build(_, i => f)) -> Array(typeof(f))
+
+// Move hoistings/CSE out of build
+build(n, let(x, y, f)) -> let(x, y, build(n, f))
+
+codegen build(n, lambda(i, f)) {
+    %elemsize = generate size(f)
+    %n = generate n
+    %total = mul %n %elemsize
+    %result = alloc double* %total
+    
+    %i = local native
+    store %i <- native 0
+    %p = local double*
+    store %p <- %result
+    goto head
+
+  :head
+    %ival = load %i
+    %test = lt %ival %n
+    if %test then body else exit
+
+  :body
+    bind i %ival
+    %f = generate f
+    unbind i
+    %pval = load %p
+    copy %pval <- %f %elemsize
+
+    %i' = add %ival native 1
+    store %i <- %i'
+    %p' = offset %pval %elemsize
+    store %p <- %p'
+    goto head
+
+  :exit    
+    return %result
+}
+
+require summation.cnut
+
+operator array.sum 1
+array.sum(a) -> sum(0, length(a), i => a[i])
+array.sum(build(n, f)) -> sum(0, n, f)
+
+operator array.map 2
+array.map(a, f) -> build(length(a), i => beta(f, a[i]))
+length(array.map(a, _)) -> length(a)
