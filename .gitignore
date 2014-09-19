@@ -1,0 +1,27 @@
+syntax: glob
+# This line is a comment, and will be skipped.
+# Empty lines are skipped too.
+
+# Top level directories to ignore
+obj/
+lib/
+bin/
+
+# VS crap
+*.vcxproj.user
+*.csproj.user
+*.vspscc
+*.ipch
+*.sdf
+*.suo
+*.vssscc
+*.opensdf
+
+# Linux crap
+*.o
+*.a
+*.dep
+
+
+/gabardine.sln.ide
+/packages
