@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+  </PropertyGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(SolutionDir)\gabardine.props" />
+  </ImportGroup>
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{28B99BB6-322A-457B-9BB7-D8F2D2AC6415}</ProjectGuid>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <PreprocessorDefinitions>MKL_ILP64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="det.c" />
+    <ClCompile Include="eye.c" />
+    <ClCompile Include="kron_eye.c" />
+    <ClCompile Include="leak.cpp" />
+    <ClCompile Include="loop_dump.c" />   
+  </ItemGroup>
+</Project>
